@@ -17,13 +17,15 @@ import android.graphics.drawable.ColorDrawable;
 import android.os.AsyncTask;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.View.OnLongClickListener;
+import android.view.View.OnCreateContextMenuListener;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
@@ -71,10 +73,12 @@ public class ActivityComicReader extends ComicActivity {
 	/** unread activity */
 	protected static UnreadLauncher mUL = null;
 	/** web page display activity */
-	protected static ComicMainWebPageDisplay mWP = null;
 	
 	/** sort type */
 	protected int mType;
+	private String selectedComic = "";
+	
+	/** to launch the alertdialog for opening the comic in a web page */
 
 
 	/** to launch the strip viewer activity in latest mode */
@@ -129,39 +133,6 @@ public class ActivityComicReader extends ComicActivity {
 		}
 	}
 	
-	/** to launch the alertdialog for opening the comic in a web page */
-	private class ComicMainWebPageDisplay implements OnLongClickListener {
-		public boolean onLongClick(View v) {
-			String title = (String) v.getTag();
-			try {
-				Comic c = mList.getComicFromTitle(title);
-				if(c == null) {
-					Log.e(TAG, "no comic found for title="+title);
-					return false;
-				}
-				final String url = c.getComicWebPageUrl();
-				AlertDialog.Builder alertbox = new AlertDialog.Builder(ActivityComicReader.this);
-				alertbox.setMessage("Visit website of '" + title + "'?");
-				alertbox.setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-					public void onClick(DialogInterface arg0, int arg1) {
-						ActivityComicReader.this.startActivity(IntentGen.linkViewIntent(url));
-					}
-				});
-				alertbox.setNegativeButton("No", new DialogInterface.OnClickListener() {
-					public void onClick(DialogInterface arg0, int arg1) {
-					}
-				});
-				alertbox.show();
-				return true;
-			}
-			catch(Exception e) {
-				e.printStackTrace();
-				return false;
-			}
-		}
-	}
-
-	
 
 	/**
 	 * adapter class for efficient traversal of list items displayed in the main activity
@@ -198,28 +169,35 @@ public class ActivityComicReader extends ComicActivity {
 			if (convertView == null) {
 				convertView = mInflater.inflate(R.layout.main_listview_content, null);
 				holder = new ViewHolder();
-				holder.latest = (Button) convertView.findViewById(R.id.comic_item_latest);
-				holder.latest.setOnClickListener(mLL);
-				holder.latest.setOnLongClickListener(mWP);
-				//Switch what shortcut button is to be shown according to the settings. 
-				switch(mscType){
+				
+				Button temp = (Button) convertView.findViewById(R.id.comic_item_latest);
+				holder.latest = temp;
+				temp.setOnClickListener(mLL);
+				temp.setOnCreateContextMenuListener((OnCreateContextMenuListener) ctx);
+				
+				//holder.latest.setOnLongClickListener(mWP);
+				//Switch what shortcut button is to be shown according to the settings.
+				
+				temp = (Button) convertView.findViewById(R.id.comic_item_scb);
+				
+				switch(mscType) {
 				case 1:
-				holder.favorite = (Button) convertView.findViewById(R.id.comic_item_scb);
-				holder.favorite.setText("FAV");
-				holder.favorite.setOnClickListener(mFL);
-				break;
+					holder.favorite = temp;
+					temp.setText("FAV");
+					temp.setOnClickListener(mFL);
+					break;
 				case 2:
-				holder.previous = (Button) convertView.findViewById(R.id.comic_item_scb);
-				holder.previous.setText("PREV");
-				holder.previous.setOnClickListener(mPL);
-				break;
+					holder.previous = temp;
+					temp.setText("PREV");
+					temp.setOnClickListener(mPL);
+					break;
 				case 3:
-				holder.unread = (Button) convertView.findViewById(R.id.comic_item_scb);
-				holder.unread.setText("UnR");
-				holder.unread.setOnClickListener(mUL);	
-				break;
+					holder.unread = temp;
+					temp.setText("UnR");
+					temp.setOnClickListener(mUL);	
+					break;
 				}
-								
+				
 				convertView.setTag(holder);
 				convertView.setBackgroundColor(mColor1);
 			}
@@ -234,21 +212,19 @@ public class ActivityComicReader extends ComicActivity {
 				}
 				holder.latest.setText(txt);
 				holder.latest.setTag(cls.mName);
-				
+
 				//TODO: I don't know what this does but it has to be set correctly or android crashes
 				switch(mscType){
 				case 1:
-				holder.favorite.setTag(cls.mName);
-				break;
+					holder.favorite.setTag(cls.mName);
+					break;
 				case 2:
-				holder.previous.setTag(cls.mName);
-				break;
+					holder.previous.setTag(cls.mName);
+					break;
 				case 3:
-				holder.unread.setTag(cls.mName);
-				break;
+					holder.unread.setTag(cls.mName);
+					break;
 				}
-				
-				
 				
 			}
 			catch(ComicNotFoundException e) { // This should never occur!
@@ -270,27 +246,58 @@ public class ActivityComicReader extends ComicActivity {
 			/** Unread button */
 			public Button unread;
 		}
+
+	}
+	
+	@Override
+	public void onCreateContextMenu(ContextMenu menu, View v,
+			ContextMenuInfo menuInfo) {
+		super.onCreateContextMenu(menu, v, menuInfo);
+		
+		selectedComic = (String) v.getTag();
+
+		if (v.getId() == R.id.comic_item_latest)
+			menu.add("Visit website for this comic");
+		
+		// TODO add more specific action for each comic
+	}
+	
+	@Override
+	public boolean onContextItemSelected(MenuItem item) {
+		boolean result = super.onContextItemSelected(item);
+		
+		Comic c;
+		
+		try {
+			c = mList.getComicFromTitle(selectedComic);
+		} catch (ComicNotFoundException e) {
+			Log.e(TAG, "no comic found: " + selectedComic);
+			return false;
+		}
+		
+		if(item.getItemId() == 0) //first position: visit website
+			startActivity(IntentGen.linkViewIntent(c.getComicWebPageUrl()));
+		
+		return result;
 	}
 
 	@Override
 	protected void onResume() {
 		Log.d(TAG, "on resume...");
 		super.onResume();
-		if(mLL == null) {
+		
+		if(mLL == null)
 			mLL = new LatestLauncher();
-		}
-		if(mFL == null) {
+		
+		if(mFL == null)
 			mFL = new FavoriteLauncher();
-		}
-		if(mPL == null) {
+		
+		if(mPL == null)
 			mPL = new PrevSessionLauncher();
-		}
-		if(mUL == null) {
+		
+		if(mUL == null)
 			mUL = new UnreadLauncher();
-		}
-		if(mWP == null) {
-			mWP = new ComicMainWebPageDisplay();
-		}
+		
 		GetComicsTask get_task = new GetComicsTask();
 		get_task.execute((Void[])null);
 	}
